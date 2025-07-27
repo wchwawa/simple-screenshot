@@ -1,5 +1,4 @@
 import { Tray, Menu, nativeImage, app, shell } from 'electron'
-import { join } from 'node:path'
 
 class TrayManager {
   private tray: Tray | null = null

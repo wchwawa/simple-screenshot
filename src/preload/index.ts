@@ -1,9 +1,44 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type { ElectronAPI } from '../shared/types'
 
 // Custom APIs for renderer
-const api = {
-  // System integration APIs will be added here
+const api: ElectronAPI = {
+  // 截图相关 API
+  screenshot: {
+    take: () => ipcRenderer.invoke('screenshot:take'),
+  },
+  
+  // 权限管理 API
+  permission: {
+    check: () => ipcRenderer.invoke('permission:check'),
+  },
+  
+  // 应用控制 API
+  app: {
+    getVersion: () => ipcRenderer.invoke('app:get-version'),
+    quit: () => ipcRenderer.invoke('app:quit'),
+  },
+  
+  // 托盘操作 API
+  tray: {
+    showMenu: () => ipcRenderer.invoke('tray:show-menu'),
+  },
+  
+  // 事件监听
+  on: (channel: string, callback: (...args: any[]) => void) => {
+    const subscription = (_event: any, ...args: any[]) => callback(...args)
+    ipcRenderer.on(channel, subscription)
+    
+    return () => {
+      ipcRenderer.removeListener(channel, subscription)
+    }
+  },
+  
+  // 移除事件监听
+  off: (channel: string, callback: (...args: any[]) => void) => {
+    ipcRenderer.removeListener(channel, callback)
+  }
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

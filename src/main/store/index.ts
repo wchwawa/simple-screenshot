@@ -46,8 +46,8 @@ const DEFAULT_CONFIG: AppConfig = {
 
 class ConfigStore {
   private static instance: ConfigStore
-  private config: AppConfig
-  private readonly configPath: string
+  private config!: AppConfig
+  private readonly configPath!: string
 
   constructor() {
     if (ConfigStore.instance) {

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron'
 import { join } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 // import icon from '../../assets/icons/icon.png?asset'
@@ -23,7 +23,7 @@ function createWindow(): void {
     autoHideMenuBar: true,
     // ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(__dirname, '../preload/index.mjs'),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false
@@ -49,11 +49,100 @@ function createWindow(): void {
 }
 
 /**
+ * 设置 IPC 事件处理器
+ */
+function setupIpcHandlers(): void {
+  console.log('Setting up IPC handlers...')
+
+  // 截图相关
+  ipcMain.handle('screenshot:take', async () => {
+    try {
+      console.log('IPC: Taking screenshot...')
+      
+      // 检查权限
+      if (permissionManager) {
+        const hasPermission = await permissionManager.validateAndPromptPermission()
+        if (!hasPermission) {
+          throw new Error('Screen capture permission not granted')
+        }
+      }
+      
+      // TODO: 实现实际的截图功能
+      // 目前先显示对话框作为占位符
+      const result = await dialog.showMessageBox({
+        type: 'info',
+        title: '截图功能',
+        message: '截图功能正在开发中...\n通过IPC调用成功！',
+        buttons: ['确定']
+      })
+      
+      return {
+        success: true,
+        message: 'Screenshot taken successfully (placeholder)',
+        timestamp: new Date().toISOString(),
+        dialogResult: result.response
+      }
+    } catch (error) {
+      console.error('Screenshot failed:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    }
+  })
+
+  // 权限管理
+  ipcMain.handle('permission:check', async () => {
+    try {
+      const hasPermission = permissionManager 
+        ? await permissionManager.validateAndPromptPermission()
+        : false
+      
+      return {
+        granted: hasPermission,
+        timestamp: new Date().toISOString()
+      }
+    } catch (error) {
+      console.error('Permission check failed:', error)
+      return {
+        granted: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    }
+  })
+
+  // 应用信息
+  ipcMain.handle('app:get-version', () => {
+    return app.getVersion()
+  })
+
+  // 应用控制
+  ipcMain.handle('app:quit', () => {
+    app.quit()
+  })
+
+  // 托盘操作
+  ipcMain.handle('tray:show-menu', () => {
+    if (trayManager) {
+      // TODO: 实现显示托盘菜单的功能
+      console.log('Showing tray menu')
+      return { success: true }
+    }
+    return { success: false, error: 'Tray manager not initialized' }
+  })
+
+  console.log('IPC handlers setup completed')
+}
+
+/**
  * 初始化应用模块
  */
 async function initializeModules(): Promise<void> {
   try {
     console.log('Initializing application modules...')
+    
+    // 0. 设置 IPC 处理器
+    setupIpcHandlers()
     
     // 1. 初始化权限管理器
     permissionManager = new PermissionManager()
@@ -71,15 +160,31 @@ async function initializeModules(): Promise<void> {
     // 4. 注册截图快捷键
     const screenshotCallback = async () => {
       console.log('Screenshot shortcut triggered')
-      // TODO: 实现截图功能
-      const { dialog } = require('electron')
-      const result = await dialog.showMessageBox({
-        type: 'info',
-        title: '截图功能',
-        message: '截图功能正在开发中...',
-        buttons: ['确定']
-      })
-      console.log('Dialog result:', result.response)
+      // 直接调用截图功能处理器逻辑
+      try {
+        console.log('IPC: Taking screenshot...')
+        
+        // 检查权限
+        if (permissionManager) {
+          const hasPermission = await permissionManager.validateAndPromptPermission()
+          if (!hasPermission) {
+            throw new Error('Screen capture permission not granted')
+          }
+        }
+        
+        // TODO: 实现实际的截图功能
+        // 目前先显示对话框作为占位符
+        const result = await dialog.showMessageBox({
+          type: 'info',
+          title: '截图功能',
+          message: '截图功能正在开发中...\n通过快捷键调用成功！',
+          buttons: ['确定']
+        })
+        
+        console.log('Screenshot via shortcut result:', result)
+      } catch (error) {
+        console.error('Screenshot via shortcut failed:', error)
+      }
     }
     
     if (!shortcutManager.registerScreenshotShortcut(screenshotCallback)) {

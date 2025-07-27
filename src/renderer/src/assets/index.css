@@ -56,6 +56,10 @@ body {
 
 .actions {
   margin-top: 2rem;
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 .btn {
@@ -66,6 +70,7 @@ body {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  min-width: 120px;
 }
 
 .btn-primary {
@@ -76,4 +81,52 @@ body {
 .btn-primary:hover {
   background: #1d4ed8;
   transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: #64748b;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background: #475569;
+  transform: translateY(-1px);
+}
+
+.btn-danger {
+  background: #dc2626;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+  transform: translateY(-1px);
+}
+
+.result, .permission-status {
+  margin-top: 2rem;
+  text-align: left;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.result h3, .permission-status h3 {
+  margin-bottom: 0.5rem;
+  color: #374151;
+  font-size: 1.1rem;
+}
+
+.result pre, .permission-status pre {
+  font-family: 'SF Mono', 'Monaco', monospace;
+  font-size: 0.875rem;
+  color: #1f2937;
+  background: white;
+  padding: 1rem;
+  border-radius: 4px;
+  border: 1px solid #d1d5db;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
