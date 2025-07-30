@@ -7,6 +7,7 @@ const api: ElectronAPI = {
   // 截图相关 API
   screenshot: {
     take: () => ipcRenderer.invoke('screenshot:take'),
+    takeRegion: () => ipcRenderer.invoke('screenshot:take-region'),
   },
   
   // 权限管理 API
@@ -38,6 +39,20 @@ const api: ElectronAPI = {
   // 移除事件监听
   off: (channel: string, callback: (...args: any[]) => void) => {
     ipcRenderer.removeListener(channel, callback)
+  },
+  
+  // IPC 通信（用于覆盖层窗口）
+  ipcRenderer: {
+    send: (channel: string, ...args: any[]) => {
+      ipcRenderer.send(channel, ...args)
+    },
+    on: (channel: string, callback: (...args: any[]) => void) => {
+      const subscription = (_event: any, ...args: any[]) => callback(...args)
+      ipcRenderer.on(channel, subscription)
+      return () => {
+        ipcRenderer.removeListener(channel, subscription)
+      }
+    }
   }
 }
 

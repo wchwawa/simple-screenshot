@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, shell, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 // import icon from '../../assets/icons/icon.png?asset'
@@ -7,6 +7,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import TrayManager from './tray'
 import ShortcutManager from './shortcuts'
 import PermissionManager from './permissions'
+import { screenshotManager } from './screenshot'
 
 
 // 全局管理器实例
@@ -55,7 +56,7 @@ function setupIpcHandlers(): void {
   console.log('Setting up IPC handlers...')
 
   // 截图相关
-  ipcMain.handle('screenshot:take', async () => {
+  ipcMain.handle('screenshot:take', async (_, mode = 'fullscreen') => {
     try {
       console.log('IPC: Taking screenshot...')
       
@@ -67,23 +68,77 @@ function setupIpcHandlers(): void {
         }
       }
       
-      // TODO: 实现实际的截图功能
-      // 目前先显示对话框作为占位符
-      const result = await dialog.showMessageBox({
-        type: 'info',
-        title: '截图功能',
-        message: '截图功能正在开发中...\n通过IPC调用成功！',
-        buttons: ['确定']
-      })
+      // 使用新的截图管理器
+      const screenshotMode = mode === 'region' ? 'region' : 'fullscreen'
+      const result = await screenshotManager.takeScreenshot(screenshotMode as any)
       
-      return {
-        success: true,
-        message: 'Screenshot taken successfully (placeholder)',
-        timestamp: new Date().toISOString(),
-        dialogResult: result.response
+      if (result.success && result.data) {
+        return {
+          success: true,
+          message: 'Screenshot taken successfully',
+          timestamp: new Date().toISOString(),
+          data: {
+            buffer: result.data.buffer,
+            width: result.data.width,
+            height: result.data.height,
+            bounds: {
+              x: 0,
+              y: 0,
+              width: result.data.width,
+              height: result.data.height
+            }
+          }
+        }
+      } else {
+        throw new Error(result.error || 'Screenshot failed')
       }
     } catch (error) {
       console.error('Screenshot failed:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    }
+  })
+
+  // 区域截图
+  ipcMain.handle('screenshot:take-region', async () => {
+    try {
+      console.log('IPC: Taking region screenshot...')
+      
+      // 检查权限
+      if (permissionManager) {
+        const hasPermission = await permissionManager.validateAndPromptPermission()
+        if (!hasPermission) {
+          throw new Error('Screen capture permission not granted')
+        }
+      }
+      
+      // 使用区域模式截图
+      const result = await screenshotManager.takeScreenshot('region' as any)
+      
+      if (result.success && result.data) {
+        return {
+          success: true,
+          message: 'Region screenshot taken successfully',
+          timestamp: new Date().toISOString(),
+          data: {
+            buffer: result.data.buffer,
+            width: result.data.width,
+            height: result.data.height,
+            bounds: {
+              x: 0,
+              y: 0,
+              width: result.data.width,
+              height: result.data.height
+            }
+          }
+        }
+      } else {
+        throw new Error(result.error || 'Region screenshot failed')
+      }
+    } catch (error) {
+      console.error('Region screenshot failed:', error)
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -154,6 +209,9 @@ async function initializeModules(): Promise<void> {
       // 权限未获取时仍然继续初始化，但功能会受限
     }
     
+    // 2.5. 初始化截图管理器
+    await screenshotManager.initialize()
+    
     // 3. 初始化快捷键管理器
     shortcutManager = new ShortcutManager()
     
@@ -172,16 +230,14 @@ async function initializeModules(): Promise<void> {
           }
         }
         
-        // TODO: 实现实际的截图功能
-        // 目前先显示对话框作为占位符
-        const result = await dialog.showMessageBox({
-          type: 'info',
-          title: '截图功能',
-          message: '截图功能正在开发中...\n通过快捷键调用成功！',
-          buttons: ['确定']
-        })
+        // 调用截图管理器（全屏模式，临时解决方案）
+        const result = await screenshotManager.takeScreenshot('fullscreen' as any)
         
-        console.log('Screenshot via shortcut result:', result)
+        if (result.success) {
+          console.log('Fullscreen screenshot via shortcut succeeded')
+        } else {
+          console.error('Screenshot via shortcut failed:', result.error)
+        }
       } catch (error) {
         console.error('Screenshot via shortcut failed:', error)
       }
@@ -218,6 +274,9 @@ function cleanup(): void {
       trayManager.destroy()
       trayManager = null
     }
+    
+    // 清理截图管理器
+    screenshotManager.cleanup()
     
     console.log('Cleanup completed')
   } catch (error) {
