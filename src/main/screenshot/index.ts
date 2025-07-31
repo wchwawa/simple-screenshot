@@ -124,14 +124,16 @@ export class ScreenshotManager {
   }
 
   private async captureRegionWithSelection(options: Partial<ScreenshotOptions>): Promise<ScreenshotData> {
-    // Show selection overlay to get user selection
+    // Show selection overlay and wait for user selection
     const selectedBounds = await this.showSelectionOverlay(options.displayId)
     
     if (!selectedBounds) {
       throw new Error('No region selected or selection was cancelled')
     }
 
-    // Use the selected bounds for capture
+    console.log('User selected region:', selectedBounds)
+
+    // Use the user-selected bounds for capture
     return await this.captureRegion({ ...options, bounds: selectedBounds })
   }
 

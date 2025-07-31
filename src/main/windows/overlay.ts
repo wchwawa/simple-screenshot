@@ -1,6 +1,5 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
-import { is } from '@electron-toolkit/utils'
 import type { Display, Rectangle, OverlayWindowOptions } from '../../shared/types/screenshot'
 
 export class OverlayWindow {
@@ -9,6 +8,7 @@ export class OverlayWindow {
   private onSelectionComplete?: (bounds: Rectangle) => void
   private onCancel?: () => void
   private isSelecting = false
+  private selectionResult: Rectangle | null = null
 
   constructor(options: OverlayWindowOptions) {
     this.display = options.display
@@ -53,66 +53,9 @@ export class OverlayWindow {
     // Set up window event handlers
     this.setupEventHandlers()
 
-    // Load the overlay content
-    try {
-      if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-        // In development, try to load from vite dev server
-        const overlayURL = `${process.env['ELECTRON_RENDERER_URL']}/overlay.html`
-        console.log('Loading overlay from dev server:', overlayURL)
-        await this.window.loadURL(overlayURL)
-      } else {
-        // In production, load from built files
-        const overlayPath = join(__dirname, '../renderer/overlay.html')
-        console.log('Loading overlay from file:', overlayPath)
-        await this.window.loadFile(overlayPath)
-      }
-    } catch (error) {
-      console.error('Failed to load overlay window:', error)
-      // Fallback: create a simple in-memory HTML page
-      const overlayHTML = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>Screenshot Overlay</title>
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { 
-              width: 100vw; height: 100vh; 
-              background: rgba(0,0,0,0.3); 
-              cursor: crosshair; 
-              overflow: hidden;
-              user-select: none;
-            }
-            #info {
-              position: absolute;
-              top: 20px;
-              left: 50%;
-              transform: translateX(-50%);
-              background: rgba(0,0,0,0.8);
-              color: white;
-              padding: 8px 16px;
-              border-radius: 8px;
-              font-family: system-ui;
-              font-size: 14px;
-            }
-          </style>
-        </head>
-        <body>
-          <div id="info">区域截图功能暂时不可用，请使用全屏截图</div>
-          <script>
-            document.addEventListener('keydown', (e) => {
-              if (e.key === 'Escape') {
-                window.close();
-              }
-            });
-            setTimeout(() => window.close(), 3000);
-          </script>
-        </body>
-        </html>
-      `
-      await this.window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(overlayHTML)}`)
-    }
+    // Load the overlay content - use a simpler, more reliable approach
+    const overlayHTML = this.createOverlayHTML()
+    await this.window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(overlayHTML)}`)
 
     // Show window after loading
     this.window.once('ready-to-show', () => {
@@ -120,6 +63,8 @@ export class OverlayWindow {
         this.window.show()
         this.window.focus()
         this.window.setAlwaysOnTop(true, 'screen-saver')
+        
+        // No need to expose methods - using simple global variables
       }
     })
   }
@@ -127,42 +72,328 @@ export class OverlayWindow {
   private setupEventHandlers(): void {
     if (!this.window) return
 
-    // Handle window closed
+    // Handle window closed - simple and clean
     this.window.on('closed', () => {
+      console.log('Overlay window closed')
       this.window = null
-      if (this.onCancel) {
+      
+      // Process the selection result
+      if (this.selectionResult && this.onSelectionComplete) {
+        this.onSelectionComplete(this.selectionResult)
+      } else if (this.onCancel) {
         this.onCancel()
       }
     })
 
-    // Handle key events
+    // Handle key events  
     this.window.webContents.on('before-input-event', (_event, input) => {
       if (input.key === 'Escape') {
         this.close()
       }
     })
 
-    // Handle selection events from renderer
-    this.window.webContents.ipc.on('overlay:selection-start', () => {
-      this.isSelecting = true
-    })
-
-    this.window.webContents.ipc.on('overlay:selection-complete', (_event, bounds: Rectangle) => {
-      this.isSelecting = false
-      if (this.onSelectionComplete) {
-        this.onSelectionComplete(bounds)
-      }
+    // Listen for selection events from renderer
+    this.window.webContents.ipc.on('overlay:selection-complete', (_event, bounds) => {
+      console.log('Received selection from renderer:', bounds)
+      this.selectionResult = bounds
       this.close()
     })
 
-    this.window.webContents.ipc.on('overlay:cancel', () => {
+    this.window.webContents.ipc.on('overlay:selection-cancel', (_event) => {
+      console.log('Received cancel from renderer')
+      this.selectionResult = null
       this.close()
     })
+
+    // No longer need IPC events - using executeJavaScript instead
 
     // Prevent the window from being moved
     this.window.on('will-move', (_event) => {
       _event.preventDefault()
     })
+  }
+
+  private createOverlayHTML(): string {
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Screenshot Selection Overlay</title>
+          <style>
+              * {
+                  margin: 0;
+                  padding: 0;
+                  box-sizing: border-box;
+              }
+              
+              body {
+                  width: 100vw;
+                  height: 100vh;
+                  background: transparent;
+                  cursor: crosshair;
+                  overflow: hidden;
+                  -webkit-app-region: no-drag;
+                  user-select: none;
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              }
+              
+              #overlay-canvas {
+                  position: absolute;
+                  top: 0;
+                  left: 0;
+                  width: 100%;
+                  height: 100%;
+                  cursor: crosshair;
+              }
+              
+              #selection-info {
+                  position: absolute;
+                  background: rgba(0, 0, 0, 0.8);
+                  color: white;
+                  padding: 4px 8px;
+                  border-radius: 4px;
+                  font-size: 12px;
+                  pointer-events: none;
+                  display: none;
+                  z-index: 1000;
+              }
+              
+              #instructions {
+                  position: absolute;
+                  top: 20px;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  background: rgba(0, 0, 0, 0.8);
+                  color: white;
+                  padding: 8px 16px;
+                  border-radius: 8px;
+                  font-size: 14px;
+                  text-align: center;
+                  animation: fadeIn 0.3s ease-in-out;
+                  z-index: 1000;
+              }
+              
+              @keyframes fadeIn {
+                  from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+                  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+              }
+              
+              .hidden {
+                  display: none !important;
+              }
+          </style>
+      </head>
+      <body>
+          <canvas id="overlay-canvas"></canvas>
+          <div id="selection-info"></div>
+          <div id="instructions">
+              drag to select screenshot area• press ESC to cancel
+          </div>
+          
+          <script>
+              class ScreenshotOverlay {
+                  constructor() {
+                      this.canvas = document.getElementById('overlay-canvas');
+                      this.ctx = this.canvas.getContext('2d');
+                      this.selectionInfo = document.getElementById('selection-info');
+                      this.instructions = document.getElementById('instructions');
+                      
+                      this.isSelecting = false;
+                      this.startX = 0;
+                      this.startY = 0;
+                      this.currentX = 0;
+                      this.currentY = 0;
+                      
+                      this.init();
+                  }
+                  
+                  init() {
+                      this.setupCanvas();
+                      this.setupEventListeners();
+                      this.drawOverlay();
+                      
+                      // Hide instructions after 3 seconds
+                      setTimeout(() => {
+                          this.instructions.classList.add('hidden');
+                      }, 3000);
+                  }
+                  
+                  setupCanvas() {
+                      const rect = document.body.getBoundingClientRect();
+                      this.canvas.width = rect.width;
+                      this.canvas.height = rect.height;
+                  }
+                  
+                  setupEventListeners() {
+                      // Mouse events
+                      this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
+                      this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
+                      this.canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
+                      
+                      // Keyboard events
+                      document.addEventListener('keydown', this.onKeyDown.bind(this));
+                      
+                      // Window events
+                      window.addEventListener('resize', this.onResize.bind(this));
+                  }
+                  
+                  onMouseDown(event) {
+                      this.isSelecting = true;
+                      this.startX = event.clientX;
+                      this.startY = event.clientY;
+                      this.currentX = event.clientX;
+                      this.currentY = event.clientY;
+                      
+                      this.instructions.classList.add('hidden');
+                      
+                      // Notify main process
+                      console.log('Selection started');
+                  }
+                  
+                  onMouseMove(event) {
+                      this.currentX = event.clientX;
+                      this.currentY = event.clientY;
+                      
+                      if (this.isSelecting) {
+                          this.drawOverlay();
+                          this.updateSelectionInfo();
+                      }
+                  }
+                  
+                  onMouseUp(event) {
+                      if (!this.isSelecting) return;
+                      
+                      this.isSelecting = false;
+                      
+                      const bounds = this.getSelectionBounds();
+                      if (bounds.width > 5 && bounds.height > 5) {
+                          // Valid selection - send via IPC
+                          console.log('Selection completed:', bounds);
+                          if (window.api && window.api.ipcRenderer) {
+                              window.api.ipcRenderer.send('overlay:selection-complete', bounds);
+                          } else {
+                              // Fallback: store in global variable
+                              window.__selectionResult = bounds;
+                              window.close();
+                          }
+                      } else {
+                          // Invalid selection, restart
+                          this.drawOverlay();
+                          this.selectionInfo.style.display = 'none';
+                      }
+                  }
+                  
+                  onKeyDown(event) {
+                      if (event.key === 'Escape') {
+                          console.log('Selection cancelled');
+                          if (window.api && window.api.ipcRenderer) {
+                              window.api.ipcRenderer.send('overlay:selection-cancel');
+                          } else {
+                              // Fallback: store null and close
+                              window.__selectionResult = null;
+                              window.close();
+                          }
+                      }
+                  }
+                  
+                  onResize() {
+                      this.setupCanvas();
+                      this.drawOverlay();
+                  }
+                  
+                  getSelectionBounds() {
+                      const left = Math.min(this.startX, this.currentX);
+                      const top = Math.min(this.startY, this.currentY);
+                      const width = Math.abs(this.currentX - this.startX);
+                      const height = Math.abs(this.currentY - this.startY);
+                      
+                      return { x: left, y: top, width, height };
+                  }
+                  
+                  drawOverlay() {
+                      const ctx = this.ctx;
+                      const width = this.canvas.width;
+                      const height = this.canvas.height;
+                      
+                      // Clear canvas
+                      ctx.clearRect(0, 0, width, height);
+                      
+                      // Draw semi-transparent overlay
+                      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                      ctx.fillRect(0, 0, width, height);
+                      
+                      if (this.isSelecting) {
+                          const bounds = this.getSelectionBounds();
+                          
+                          // Clear selection area
+                          ctx.clearRect(bounds.x, bounds.y, bounds.width, bounds.height);
+                          
+                          // Draw selection border
+                          ctx.strokeStyle = '#007AFF';
+                          ctx.lineWidth = 2;
+                          ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+                          
+                          // Draw corner handles
+                          this.drawCornerHandles(bounds);
+                      }
+                  }
+                  
+                  drawCornerHandles(bounds) {
+                      const ctx = this.ctx;
+                      const handleSize = 8;
+                      const halfHandle = handleSize / 2;
+                      
+                      ctx.fillStyle = '#007AFF';
+                      
+                      // Top-left
+                      ctx.fillRect(bounds.x - halfHandle, bounds.y - halfHandle, handleSize, handleSize);
+                      // Top-right
+                      ctx.fillRect(bounds.x + bounds.width - halfHandle, bounds.y - halfHandle, handleSize, handleSize);
+                      // Bottom-left
+                      ctx.fillRect(bounds.x - halfHandle, bounds.y + bounds.height - halfHandle, handleSize, handleSize);
+                      // Bottom-right
+                      ctx.fillRect(bounds.x + bounds.width - halfHandle, bounds.y + bounds.height - halfHandle, handleSize, handleSize);
+                  }
+                  
+                  updateSelectionInfo() {
+                      const bounds = this.getSelectionBounds();
+                      
+                      this.selectionInfo.textContent = \`\${Math.round(bounds.width)} × \${Math.round(bounds.height)}\`;
+                      this.selectionInfo.style.display = 'block';
+                      
+                      // Position info box near mouse but avoid edges
+                      let infoX = this.currentX + 10;
+                      let infoY = this.currentY - 30;
+                      
+                      const infoRect = this.selectionInfo.getBoundingClientRect();
+                      if (infoX + infoRect.width > window.innerWidth) {
+                          infoX = this.currentX - infoRect.width - 10;
+                      }
+                      if (infoY < 0) {
+                          infoY = this.currentY + 20;
+                      }
+                      
+                      this.selectionInfo.style.left = infoX + 'px';
+                      this.selectionInfo.style.top = infoY + 'px';
+                  }
+              }
+              
+              // Selection result will be communicated via IPC or global variable
+              
+              // Initialize when DOM is ready
+              if (document.readyState === 'loading') {
+                  document.addEventListener('DOMContentLoaded', () => {
+                      new ScreenshotOverlay();
+                  });
+              } else {
+                  new ScreenshotOverlay();
+              }
+          </script>
+      </body>
+      </html>
+    `
   }
 
   show(): void {
@@ -195,6 +426,12 @@ export class OverlayWindow {
 
   isCurrentlySelecting(): boolean {
     return this.isSelecting
+  }
+
+  // Method to be called from HTML
+  setSelectionResult(bounds: Rectangle | null): void {
+    console.log('Selection result set:', bounds)
+    this.selectionResult = bounds
   }
 
   // Send display info to renderer process

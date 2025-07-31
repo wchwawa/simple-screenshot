@@ -230,13 +230,13 @@ async function initializeModules(): Promise<void> {
           }
         }
         
-        // 调用截图管理器（全屏模式，临时解决方案）
-        const result = await screenshotManager.takeScreenshot('fullscreen' as any)
+        // 调用截图管理器（区域模式）
+        const result = await screenshotManager.takeScreenshot('region' as any)
         
         if (result.success) {
-          console.log('Fullscreen screenshot via shortcut succeeded')
+          console.log('Region screenshot via shortcut succeeded')
         } else {
-          console.error('Screenshot via shortcut failed:', result.error)
+          console.error('Region screenshot via shortcut failed:', result.error)
         }
       } catch (error) {
         console.error('Screenshot via shortcut failed:', error)
