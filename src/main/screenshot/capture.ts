@@ -126,17 +126,29 @@ export class ScreenshotCapture {
       // Validate bounds if specified
       if (options.bounds) {
         const bounds = options.bounds
-        if (bounds.x < 0 || bounds.y < 0 || 
-            bounds.x + bounds.width > size.width || 
-            bounds.y + bounds.height > size.height) {
-          throw new Error(`Invalid bounds: ${JSON.stringify(bounds)}. Image size: ${size.width}x${size.height}`)
+        console.log('=== CROP VALIDATION ===')
+        console.log('Input bounds (physical pixels):', bounds)
+        console.log('Captured image size (physical pixels):', size)
+        
+        // Ensure bounds are within image dimensions
+        const adjustedBounds = {
+          x: Math.max(0, Math.min(bounds.x, size.width - 1)),
+          y: Math.max(0, Math.min(bounds.y, size.height - 1)),
+          width: Math.min(bounds.width, size.width - bounds.x),
+          height: Math.min(bounds.height, size.height - bounds.y)
         }
         
-        if (bounds.width < 1 || bounds.height < 1) {
-          throw new Error(`Invalid bounds dimensions: ${bounds.width}x${bounds.height}`)
+        if (adjustedBounds.width < 1 || adjustedBounds.height < 1) {
+          throw new Error(`Invalid bounds dimensions after adjustment: ${adjustedBounds.width}x${adjustedBounds.height}`)
+        }
+        
+        if (JSON.stringify(bounds) !== JSON.stringify(adjustedBounds)) {
+          console.warn('⚠️ Bounds were adjusted to fit within image!')
+          console.log('Original bounds:', bounds)
+          console.log('Adjusted bounds:', adjustedBounds)
         }
 
-        const croppedImage = await this.cropImage(thumbnail, bounds)
+        const croppedImage = await this.cropImage(thumbnail, adjustedBounds)
         imageBuffer = croppedImage.toPNG()
       } else {
         imageBuffer = thumbnail.toPNG()
@@ -204,15 +216,26 @@ export class ScreenshotCapture {
 
   private async cropImage(image: Electron.NativeImage, bounds: Rectangle): Promise<Electron.NativeImage> {
     try {
-      const croppedImage = image.crop({
-        x: Math.round(bounds.x),
-        y: Math.round(bounds.y),
-        width: Math.round(bounds.width),
-        height: Math.round(bounds.height)
-      })
+      // Important: Use exact values without modification
+      const cropBounds = {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height
+      }
+      
+      console.log('=== CROPPING ===')
+      console.log('Image size:', image.getSize())
+      console.log('Crop bounds:', cropBounds)
+      
+      const croppedImage = image.crop(cropBounds)
+      
+      console.log('Cropped image size:', croppedImage.getSize())
+      
       return croppedImage
     } catch (error) {
       console.error('Image cropping failed:', error)
+      console.error('Failed bounds:', bounds)
       throw new Error('Failed to crop image')
     }
   }

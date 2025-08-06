@@ -21,10 +21,22 @@ export class OverlayWindow {
       return
     }
 
+    // CRITICAL: On macOS, we need to account for the menu bar
+    // The display.bounds includes the menu bar, but BrowserWindow positioning doesn't
+    // Calculate menu bar height from the difference between bounds and workArea
+    const menuBarHeight = this.display.workArea.y - this.display.bounds.y
+    
+    console.log('Display info:', {
+      bounds: this.display.bounds,
+      workArea: this.display.workArea,
+      menuBarHeight
+    })
+
     // Create transparent overlay window
+    // IMPORTANT: BrowserWindow uses logical pixels (DIPs), but we'll track physical pixels internally
     this.window = new BrowserWindow({
       x: this.display.bounds.x,
-      y: this.display.bounds.y,
+      y: this.display.bounds.y,  // This will be automatically adjusted by macOS to account for menu bar
       width: this.display.bounds.width,
       height: this.display.bounds.height,
       transparent: true,
@@ -94,15 +106,32 @@ export class OverlayWindow {
 
     // Listen for selection events from renderer
     this.window.webContents.ipc.on('overlay:selection-complete', (_event, bounds) => {
-      console.log('Received selection from renderer (display-relative):', bounds)
-      // Convert display-relative coordinates to global coordinates
+      console.log('Received selection from renderer (logical pixels):', bounds)
+      
+      // CRITICAL FIX: Account for macOS menu bar offset
+      // The BrowserWindow is positioned below the menu bar, but desktopCapturer includes it
+      // We need to subtract the menu bar height from the Y coordinate
+      const menuBarHeight = this.display.workArea.y - this.display.bounds.y
+      
+      // Bounds are in logical pixels (DIPs) from renderer
+      // Convert to global logical coordinates and adjust for menu bar
       const globalBounds = {
         x: bounds.x + this.display.bounds.x,
-        y: bounds.y + this.display.bounds.y,
+        y: bounds.y + this.display.bounds.y + menuBarHeight,  // Subtract menu bar height
         width: bounds.width,
         height: bounds.height
       }
-      console.log('Converted to global coordinates:', globalBounds)
+      
+      console.log('Menu bar adjustment:', {
+        menuBarHeight,
+        originalY: bounds.y + this.display.bounds.y,
+        adjustedY: globalBounds.y
+      })
+      console.log('Global bounds (logical pixels, menu bar adjusted):', globalBounds)
+      console.log('Display bounds:', this.display.bounds)
+      console.log('Display workArea:', this.display.workArea)
+      console.log('Display scaleFactor:', this.display.scaleFactor)
+      
       this.selectionResult = globalBounds
       this.close()
     })
@@ -230,8 +259,21 @@ export class OverlayWindow {
                   
                   setupCanvas() {
                       const rect = document.body.getBoundingClientRect();
-                      this.canvas.width = rect.width;
-                      this.canvas.height = rect.height;
+                      const dpr = window.devicePixelRatio || 1;
+                      
+                      // CRITICAL: Canvas must use physical pixels internally for accurate rendering
+                      // but display at logical pixel size
+                      this.canvas.width = rect.width * dpr;
+                      this.canvas.height = rect.height * dpr;
+                      
+                      // Scale the context to match device pixel ratio
+                      this.ctx.scale(dpr, dpr);
+                      
+                      // But keep CSS size in logical pixels
+                      this.canvas.style.width = rect.width + 'px';
+                      this.canvas.style.height = rect.height + 'px';
+                      
+                      console.log('Canvas setup - DPR:', dpr, 'Logical size:', rect.width, 'x', rect.height);
                   }
                   
                   setupEventListeners() {
@@ -249,6 +291,7 @@ export class OverlayWindow {
                   
                   onMouseDown(event) {
                       this.isSelecting = true;
+                      // Use logical pixels directly - simpler and more reliable
                       this.startX = event.clientX;
                       this.startY = event.clientY;
                       this.currentX = event.clientX;
@@ -261,6 +304,7 @@ export class OverlayWindow {
                   }
                   
                   onMouseMove(event) {
+                      // Use logical pixels directly
                       this.currentX = event.clientX;
                       this.currentY = event.clientY;
                       
@@ -322,10 +366,12 @@ export class OverlayWindow {
                   
                   drawOverlay() {
                       const ctx = this.ctx;
-                      const width = this.canvas.width;
-                      const height = this.canvas.height;
+                      const dpr = window.devicePixelRatio || 1;
+                      // Get logical dimensions (canvas is scaled by dpr)
+                      const width = this.canvas.width / dpr;
+                      const height = this.canvas.height / dpr;
                       
-                      // Clear canvas
+                      // Clear canvas (in logical pixels due to scaling)
                       ctx.clearRect(0, 0, width, height);
                       
                       // Draw semi-transparent overlay
@@ -335,7 +381,7 @@ export class OverlayWindow {
                       if (this.isSelecting) {
                           const bounds = this.getSelectionBounds();
                           
-                          // Clear selection area
+                          // Clear selection area (bounds are in logical pixels)
                           ctx.clearRect(bounds.x, bounds.y, bounds.width, bounds.height);
                           
                           // Draw selection border
@@ -367,7 +413,7 @@ export class OverlayWindow {
                   
                   updateSelectionInfo() {
                       const bounds = this.getSelectionBounds();
-                      
+                      // Display size in logical pixels
                       this.selectionInfo.textContent = \`\${Math.round(bounds.width)} × \${Math.round(bounds.height)}\`;
                       this.selectionInfo.style.display = 'block';
                       
@@ -445,9 +491,19 @@ export class OverlayWindow {
   // Send display info to renderer process
   async sendDisplayInfo(): Promise<void> {
     if (this.window && !this.window.isDestroyed()) {
+      // Send display info with physical pixel bounds
+      const scaleFactor = this.display.scaleFactor
       this.window.webContents.send('overlay:display-info', {
-        display: this.display,
-        scaleFactor: this.display.scaleFactor
+        display: {
+          ...this.display,
+          physicalBounds: {
+            x: this.display.bounds.x * scaleFactor,
+            y: this.display.bounds.y * scaleFactor,
+            width: this.display.bounds.width * scaleFactor,
+            height: this.display.bounds.height * scaleFactor
+          }
+        },
+        scaleFactor: scaleFactor
       })
     }
   }

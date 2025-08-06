@@ -145,13 +145,14 @@ export class ScreenshotManager {
 
   private async captureRegionWithSelection(options: Partial<ScreenshotOptions>): Promise<ScreenshotData> {
     // Show selection overlay and wait for user selection
+    // NOTE: selectedBounds are in logical pixels (DIPs) from the overlay
     const selectedBounds = await this.showSelectionOverlay(options.displayId)
     
     if (!selectedBounds) {
       throw new Error('No region selected or selection was cancelled')
     }
 
-    console.log('User selected region:', selectedBounds)
+    console.log('User selected region (logical pixels):', selectedBounds)
 
     // Use the user-selected bounds for capture
     const screenshotData = await this.captureRegion({ ...options, bounds: selectedBounds })
@@ -169,54 +170,51 @@ export class ScreenshotManager {
       throw new Error('Bounds required for region capture')
     }
 
-    // Determine which display contains the region
-    const centerX = options.bounds.x + options.bounds.width / 2
-    const centerY = options.bounds.y + options.bounds.height / 2
+    // Bounds are in logical pixels (DIPs) from overlay
+    const logicalBounds = options.bounds
+    console.log('Capture region - Logical bounds:', logicalBounds)
     
-    console.log('Capture region - Global bounds:', options.bounds)
-    console.log('Center point:', { x: centerX, y: centerY })
-    
+    // Find which display contains the region
+    const centerX = logicalBounds.x + logicalBounds.width / 2
+    const centerY = logicalBounds.y + logicalBounds.height / 2
     const display = this.displayManager.getDisplayAtPoint(centerX, centerY)
+    
     if (!display) {
       throw new Error('No display found for the specified region')
     }
     
-    console.log('Selected display:', display.id, 'bounds:', display.bounds)
+    console.log('Selected display:', display.id, 'scaleFactor:', display.scaleFactor)
 
-    // Convert global coordinates to display-relative coordinates
-    const displayBounds = this.displayManager.convertToDisplayCoordinates(
-      options.bounds.x,
-      options.bounds.y,
-      display.id
-    )
-
-    if (!displayBounds) {
-      throw new Error('Failed to convert coordinates to display space')
-    }
-
-    // Apply scale factor to convert from DIPs to physical pixels
-    const scaleFactor = display.scaleFactor
-    const relativeBounds: Rectangle = {
-      x: Math.round(displayBounds.x * scaleFactor),
-      y: Math.round(displayBounds.y * scaleFactor),
-      width: Math.round(options.bounds.width * scaleFactor),
-      height: Math.round(options.bounds.height * scaleFactor)
+    // Convert global logical coordinates to display-relative logical coordinates
+    const relativeLogicalBounds = {
+      x: logicalBounds.x - display.bounds.x,
+      y: logicalBounds.y - display.bounds.y,
+      width: logicalBounds.width,
+      height: logicalBounds.height
     }
     
-    console.log('Scale factor:', scaleFactor)
-    console.log('Relative bounds for capture (physical pixels):', relativeBounds)
+    console.log('Relative logical bounds:', relativeLogicalBounds)
+
+    // Convert to physical pixels for capture
+    const scaleFactor = display.scaleFactor
+    const physicalBounds: Rectangle = {
+      x: Math.floor(relativeLogicalBounds.x * scaleFactor),
+      y: Math.floor(relativeLogicalBounds.y * scaleFactor),
+      width: Math.round(relativeLogicalBounds.width * scaleFactor),
+      height: Math.round(relativeLogicalBounds.height * scaleFactor)
+    }
+    
+    console.log('Physical bounds for capture:', physicalBounds)
 
     const screenshotData = await this.capture.captureScreen({
       displayId: display.id,
-      bounds: relativeBounds,
+      bounds: physicalBounds,
       format: options.format,
       quality: options.quality
     })
 
-    // Store the scale factor and update dimensions to logical pixels for consistency
+    // Store the scale factor
     screenshotData.scaleFactor = display.scaleFactor
-    // Note: width and height in screenshotData are already in physical pixels from capture
-    // We keep them as-is since the editor needs to work with the actual pixel data
     return screenshotData
   }
 
