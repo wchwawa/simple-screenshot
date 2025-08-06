@@ -1,4 +1,4 @@
-import { desktopCapturer, nativeImage } from 'electron'
+import { desktopCapturer, nativeImage, screen } from 'electron'
 import type { 
   CaptureOptions, 
   CaptureSource, 
@@ -11,7 +11,7 @@ export class ScreenshotCapture {
   private cache: Map<string, CaptureSource[]> = new Map()
   private cacheExpiry: Map<string, number> = new Map()
   private readonly CACHE_DURATION = 500 // Reduced cache duration
-  private readonly MAX_THUMBNAIL_SIZE = { width: 1920, height: 1080 } // Further reduced to prevent memory issues
+  private readonly MAX_THUMBNAIL_SIZE = { width: 3840, height: 2160 } // Further reduced to prevent memory issues
   private lastCaptureTime = 0
   private readonly MIN_CAPTURE_INTERVAL = 200 // Minimum time between captures (ms)
 
@@ -76,6 +76,8 @@ export class ScreenshotCapture {
       let targetSource: CaptureSource | undefined
       
       if (options.displayId) {
+        console.log('Looking for display:', options.displayId)
+        console.log('Available sources:', sources.map(s => ({ id: s.id, displayId: s.displayId, name: s.name })))
         targetSource = sources.find(source => source.displayId === options.displayId)
         if (!targetSource) {
           throw new Error(`Display ${options.displayId} not found. Available displays: ${sources.map(s => s.displayId).join(', ')}`)
@@ -89,9 +91,23 @@ export class ScreenshotCapture {
       }
 
       // Get full resolution screenshot with optimized size
+      // For high DPI displays, we need to capture at the actual physical resolution
+      const displays = screen.getAllDisplays()
+      const targetDisplay = displays.find(d => d.id.toString() === targetSource.displayId)
+      
+      let captureSize = this.MAX_THUMBNAIL_SIZE
+      if (targetDisplay) {
+        // Use actual display size in physical pixels
+        captureSize = {
+          width: Math.round(targetDisplay.bounds.width * targetDisplay.scaleFactor),
+          height: Math.round(targetDisplay.bounds.height * targetDisplay.scaleFactor)
+        }
+        console.log('Using display-specific capture size:', captureSize, 'for display:', targetDisplay.id)
+      }
+      
       const fullSources = await desktopCapturer.getSources({
         types: ['screen'],
-        thumbnailSize: this.MAX_THUMBNAIL_SIZE
+        thumbnailSize: captureSize
       })
 
       const fullSource = fullSources.find(source => source.id === targetSource!.id)

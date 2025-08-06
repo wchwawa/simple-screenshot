@@ -8,6 +8,7 @@ import TrayManager from './tray'
 import ShortcutManager from './shortcuts'
 import PermissionManager from './permissions'
 import { screenshotManager } from './screenshot'
+import './editor' // Initialize editor manager IPC handlers
 
 
 // 全局管理器实例
@@ -211,6 +212,9 @@ async function initializeModules(): Promise<void> {
     
     // 2.5. 初始化截图管理器
     await screenshotManager.initialize()
+    
+    // 2.6. 初始化编辑器管理器 (IPC handlers are set up in constructor)
+    console.log('Editor manager initialized')
     
     // 3. 初始化快捷键管理器
     shortcutManager = new ShortcutManager()

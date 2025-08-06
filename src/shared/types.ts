@@ -49,6 +49,13 @@ export interface ElectronAPI {
   tray: {
     showMenu: () => Promise<TrayResult>
   }
+  editorInit: (data: any) => Promise<boolean>
+  editorApplyAction: (action: any) => Promise<any>
+  editorUndo: () => Promise<any>
+  editorRedo: () => Promise<any>
+  editorSave: () => Promise<any>
+  editorGetPreview: () => Promise<Buffer | null>
+  onEditorInit: (callback: (data: any) => void) => (() => void)
   on: (channel: string, callback: (...args: any[]) => void) => (() => void)
   off: (channel: string, callback: (...args: any[]) => void) => void
   ipcRenderer?: {

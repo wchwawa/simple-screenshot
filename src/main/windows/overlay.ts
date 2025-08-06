@@ -94,8 +94,16 @@ export class OverlayWindow {
 
     // Listen for selection events from renderer
     this.window.webContents.ipc.on('overlay:selection-complete', (_event, bounds) => {
-      console.log('Received selection from renderer:', bounds)
-      this.selectionResult = bounds
+      console.log('Received selection from renderer (display-relative):', bounds)
+      // Convert display-relative coordinates to global coordinates
+      const globalBounds = {
+        x: bounds.x + this.display.bounds.x,
+        y: bounds.y + this.display.bounds.y,
+        width: bounds.width,
+        height: bounds.height
+      }
+      console.log('Converted to global coordinates:', globalBounds)
+      this.selectionResult = globalBounds
       this.close()
     })
 

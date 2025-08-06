@@ -26,6 +26,21 @@ const api: ElectronAPI = {
     showMenu: () => ipcRenderer.invoke('tray:show-menu'),
   },
   
+  // 编辑器 API
+  editorInit: (data: any) => ipcRenderer.invoke('editor:init', data),
+  editorApplyAction: (action: any) => ipcRenderer.invoke('editor:apply-action', action),
+  editorUndo: () => ipcRenderer.invoke('editor:undo'),
+  editorRedo: () => ipcRenderer.invoke('editor:redo'),
+  editorSave: () => ipcRenderer.invoke('editor:save'),
+  editorGetPreview: () => ipcRenderer.invoke('editor:get-preview'),
+  onEditorInit: (callback: (data: any) => void) => {
+    const subscription = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('editor:init', subscription)
+    return () => {
+      ipcRenderer.removeListener('editor:init', subscription)
+    }
+  },
+  
   // 事件监听
   on: (channel: string, callback: (...args: any[]) => void) => {
     const subscription = (_event: any, ...args: any[]) => callback(...args)

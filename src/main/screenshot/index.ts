@@ -2,6 +2,8 @@ import { DisplayManager } from './display'
 import { ScreenshotCapture } from './capture'
 import { overlayWindowManager } from '../windows/overlay'
 import { clipboardManager } from '../clipboard'
+import { editorWindowManager } from '../windows/editor'
+import { editorManager } from '../editor'
 import type { 
   ScreenshotOptions, 
   ScreenshotData, 
@@ -69,10 +71,28 @@ export class ScreenshotManager {
           throw new Error(`Unsupported screenshot mode: ${mode}`)
       }
 
-      // Automatically copy to clipboard
-      const clipboardSuccess = await clipboardManager.copyScreenshot(screenshotData)
-      if (!clipboardSuccess) {
-        console.warn('Failed to copy screenshot to clipboard')
+      // For region mode, enter edit mode instead of directly copying
+      if (mode === ScreenshotMode.REGION) {
+        // Initialize editor with screenshot data
+        await editorManager.initializeEditor(screenshotData)
+        
+        // Show editor window
+        await editorWindowManager.showEditor(
+          screenshotData,
+          options.bounds || { x: 0, y: 0, width: screenshotData.width, height: screenshotData.height },
+          () => {
+            console.log('Editing completed')
+          },
+          () => {
+            console.log('Editing cancelled')
+          }
+        )
+      } else {
+        // For other modes, copy directly to clipboard
+        const clipboardSuccess = await clipboardManager.copyScreenshot(screenshotData)
+        if (!clipboardSuccess) {
+          console.warn('Failed to copy screenshot to clipboard')
+        }
       }
 
       return {
@@ -134,7 +154,14 @@ export class ScreenshotManager {
     console.log('User selected region:', selectedBounds)
 
     // Use the user-selected bounds for capture
-    return await this.captureRegion({ ...options, bounds: selectedBounds })
+    const screenshotData = await this.captureRegion({ ...options, bounds: selectedBounds })
+    
+    // Store the selected bounds for editor positioning
+    if (options) {
+      options.bounds = selectedBounds
+    }
+    
+    return screenshotData
   }
 
   private async captureRegion(options: Partial<ScreenshotOptions>): Promise<ScreenshotData> {
@@ -146,10 +173,15 @@ export class ScreenshotManager {
     const centerX = options.bounds.x + options.bounds.width / 2
     const centerY = options.bounds.y + options.bounds.height / 2
     
+    console.log('Capture region - Global bounds:', options.bounds)
+    console.log('Center point:', { x: centerX, y: centerY })
+    
     const display = this.displayManager.getDisplayAtPoint(centerX, centerY)
     if (!display) {
       throw new Error('No display found for the specified region')
     }
+    
+    console.log('Selected display:', display.id, 'bounds:', display.bounds)
 
     // Convert global coordinates to display-relative coordinates
     const displayBounds = this.displayManager.convertToDisplayCoordinates(
@@ -162,12 +194,17 @@ export class ScreenshotManager {
       throw new Error('Failed to convert coordinates to display space')
     }
 
+    // Apply scale factor to convert from DIPs to physical pixels
+    const scaleFactor = display.scaleFactor
     const relativeBounds: Rectangle = {
-      x: displayBounds.x,
-      y: displayBounds.y,
-      width: options.bounds.width,
-      height: options.bounds.height
+      x: Math.round(displayBounds.x * scaleFactor),
+      y: Math.round(displayBounds.y * scaleFactor),
+      width: Math.round(options.bounds.width * scaleFactor),
+      height: Math.round(options.bounds.height * scaleFactor)
     }
+    
+    console.log('Scale factor:', scaleFactor)
+    console.log('Relative bounds for capture (physical pixels):', relativeBounds)
 
     const screenshotData = await this.capture.captureScreen({
       displayId: display.id,
@@ -176,7 +213,10 @@ export class ScreenshotManager {
       quality: options.quality
     })
 
+    // Store the scale factor and update dimensions to logical pixels for consistency
     screenshotData.scaleFactor = display.scaleFactor
+    // Note: width and height in screenshotData are already in physical pixels from capture
+    // We keep them as-is since the editor needs to work with the actual pixel data
     return screenshotData
   }
 
