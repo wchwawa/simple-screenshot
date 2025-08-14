@@ -109,15 +109,21 @@ export class OverlayWindow {
       console.log('Received selection from renderer (logical pixels):', bounds)
       
       // CRITICAL FIX: Account for macOS menu bar offset
-      // The BrowserWindow is positioned below the menu bar, but desktopCapturer includes it
-      // We need to subtract the menu bar height from the Y coordinate
+      // ⚠️ DO NOT REMOVE OR MODIFY WITHOUT READING /docs/coordinate-system-guide.md
+      // 
+      // The BrowserWindow coordinate system starts BELOW the menu bar (y=0 is below menu bar)
+      // But desktopCapturer includes the menu bar in its coordinate system (y=0 is top of screen)
+      // This causes a Y-axis offset equal to the menu bar height (typically 25px)
+      // 
+      // We MUST add menuBarHeight to align the screenshot with user selection
+      // See: https://github.com/electron/electron/issues/[coordinate-issues]
       const menuBarHeight = this.display.workArea.y - this.display.bounds.y
       
       // Bounds are in logical pixels (DIPs) from renderer
       // Convert to global logical coordinates and adjust for menu bar
       const globalBounds = {
         x: bounds.x + this.display.bounds.x,
-        y: bounds.y + this.display.bounds.y + menuBarHeight,  // Subtract menu bar height
+        y: bounds.y + this.display.bounds.y + menuBarHeight, 
         width: bounds.width,
         height: bounds.height
       }

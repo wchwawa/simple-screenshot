@@ -186,9 +186,13 @@ export class ScreenshotManager {
     console.log('Selected display:', display.id, 'scaleFactor:', display.scaleFactor)
 
     // Convert global logical coordinates to display-relative logical coordinates
+    // ⚠️ CRITICAL: This conversion is essential for multi-display support
+    // The bounds from overlay are in global screen coordinates, but the capture API
+    // needs coordinates relative to the specific display being captured
+    // See /docs/coordinate-system-guide.md for detailed explanation
     const relativeLogicalBounds = {
-      x: logicalBounds.x - display.bounds.x,
-      y: logicalBounds.y - display.bounds.y,
+      x: logicalBounds.x - display.bounds.x,  // Convert to display-relative X
+      y: logicalBounds.y - display.bounds.y,  // Convert to display-relative Y (fixes offset bug)
       width: logicalBounds.width,
       height: logicalBounds.height
     }

@@ -750,7 +750,7 @@ export class EditorWindow {
                           const img = new Image();
                           img.onload = () => {
                               this.screenshotCtx.clearRect(0, 0, this.screenshotCanvas.width, this.screenshotCanvas.height);
-                              this.screenshotCtx.drawImage(img, 0, 0);
+                              this.screenshotCtx.drawImage(img, 0, 0, this.screenshotCanvas.width, this.screenshotCanvas.height);
                               URL.revokeObjectURL(url);
                           };
                           img.src = url;
